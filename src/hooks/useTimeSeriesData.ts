@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 
 export type TimeRange = "10m" | "30m" | "1h" | "1d" | "yesterday" | "custom";
 
@@ -147,7 +147,7 @@ export const useTimeSeriesData = (
           value: Math.max(0, value),
         });
       }
-      console.log("Mock data:", data);
+
       return data;
     },
     [customTimeRange],

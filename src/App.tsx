@@ -1,3 +1,4 @@
+import React from 'react';
 import AdvancedTimeSeriesChart from './AdvancedTimeSeriesChart';
 import './App.css';
 
