@@ -1,0 +1,70 @@
+绘制时间序列图（Time Series Plot）是数据分析中的基本功。无论你使用 Python、JavaScript 还是 BI 工具，其 API 设计逻辑其实非常相似。
+
+针对动态数据，展示的核心在于“局部刷新”或“滑动窗口”。以下是通用的 API 逻辑与流程：
+
+1. 典型的 API 结构
+大多数绘图库（如 Python 的 Matplotlib/Plotly 或 JS 的 ECharts/Highcharts）的 API 通常包含以下三个要素：
+
+数据结构：通常是两个数组，一个是时间轴（X轴），一个是数值（Y轴）。或者是一个包含时间戳的对象数组。
+
+轴配置 (Axes)：指定 X 轴为 time 类型，这会自动处理日期格式化（如 09:00, 10:00）。
+
+渲染/更新方法：如 .plot() 用于静态生成，.update() 或 .appendData() 用于动态追加。
+
+2. 动态数据的展示流程
+处理动态时间序列（如实时股价、服务器 CPU 占用）时，通常遵循以下流程：
+
+第一阶段：初始化 (Initialization)
+定义画布：创建一个容器（如 HTML 的 <div> 或 Python 的 Figure 对象）。
+
+配置坐标轴：设定 X 轴类型为 datetime。
+
+设定窗口大小：决定屏幕上显示多少个数据点（例如：只显示最近的 60 秒）。
+
+第二阶段：数据获取 (Data Ingestion)
+轮询 (Polling)：客户端每隔 1s 向后端请求一次数据。
+
+推送 (WebSocket/SSE)：后端主动把最新点推给前端（适用于高频交易或监控）。
+
+第三阶段：动态渲染 (Rendering)
+这是最关键的一步，有两种主流做法：
+
+滑动窗口法 (Sliding Window)：
+
+在内存数组中 push 一个新点，同时 shift（删除）最老的一个点。
+
+调用更新 API 重新绘图。
+
+追加模式 (Incremental Update)：
+
+不重绘整个图表，只在现有曲线末尾追加一段。这在 JS 库（如 ECharts）中性能表现更好。
+
+3. 主流工具示例
+在 Python (使用 Plotly) 中：
+Python 通常用于后端处理或离线分析，但在交互式 Dashboard（如 Dash）中可以这样：
+
+Python
+# 核心逻辑伪代码
+fig.add_trace(go.Scatter(x=times, y=values))
+fig.update_layout(xaxis_range=[current_time - offset, current_time])
+在 JavaScript (使用 ECharts) 中：
+前端展示动态数据的首选：
+
+JavaScript
+// 设置一个定时器模拟动态
+setInterval(function () {
+    data.shift(); // 删掉旧的
+    data.push(getNextData()); // 加入新的
+    
+    myChart.setOption({
+        series: [{ data: data }] // 增量更新
+    });
+}, 1000);
+4. 关键交互细节
+为了让动态图看起来“专业”，通常会加入以下处理：
+
+平滑过渡 (Animation)：新数据点进入时，曲线平滑向左移动，而不是闪烁跳变。
+
+自动格式化：当时间跨度从“分钟”拉长到“小时”时，X 轴标签能自动从 12:01 变成 12:00, 13:00。
+
+数据降采样 (Downsampling)：如果数据量太大（如每秒 1000 个点），绘图前先求平均值，否则浏览器会卡死。
