@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 
-export type TimeRange = "10m" | "30m" | "1h" | "1d" | "yesterday";
+export type TimeRange = "10m" | "30m" | "1h" | "1d" | "yesterday" | "custom";
+
+export interface CustomTimeRange {
+  from: string;
+  to: string;
+}
 
 interface TimeSeriesDataPoint {
   timestamp: string;
@@ -11,7 +16,48 @@ interface UseTimeSeriesDataOptions {
   apiEndpoint?: string;
   mockData?: boolean;
   updateInterval?: number; // 毫秒
+  customTimeRange?: CustomTimeRange;
 }
+
+/**
+ * 解析时间字符串（支持 now, now-5m, now-1h, now-1d 或 ISO 日期时间）
+ */
+const parseTimeString = (timeStr: string, referenceTime: Date): Date => {
+  if (timeStr === "now") {
+    return new Date(referenceTime);
+  }
+
+  // 匹配 now-5m, now-1h, now-1d 格式
+  const relativeMatch = timeStr.match(/^now-(\d+)(m|h|d)$/);
+  if (relativeMatch) {
+    const value = parseInt(relativeMatch[1], 10);
+    const unit = relativeMatch[2];
+    const time = new Date(referenceTime);
+
+    switch (unit) {
+      case "m":
+        time.setMinutes(time.getMinutes() - value);
+        break;
+      case "h":
+        time.setHours(time.getHours() - value);
+        break;
+      case "d":
+        time.setDate(time.getDate() - value);
+        break;
+    }
+
+    return time;
+  }
+
+  // 尝试解析为 ISO 日期时间
+  const isoDate = new Date(timeStr);
+  if (!isNaN(isoDate.getTime())) {
+    return isoDate;
+  }
+
+  // 默认返回当前时间
+  return new Date(referenceTime);
+};
 
 /**
  * 自定义 Hook：管理时间序列数据
@@ -21,7 +67,13 @@ export const useTimeSeriesData = (
   timeRange: TimeRange,
   options: UseTimeSeriesDataOptions = {},
 ) => {
-  const { apiEndpoint, mockData = true, updateInterval = 2000 } = options;
+  const {
+    apiEndpoint,
+    mockData = true,
+    updateInterval = 2000,
+
+    customTimeRange,
+  } = options;
 
   const [data, setData] = useState<TimeSeriesDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
@@ -65,6 +117,19 @@ export const useTimeSeriesData = (
           interval = 12 * 60 * 1000;
           points = 120;
           break;
+        case "custom":
+          if (customTimeRange) {
+            startTime = parseTimeString(customTimeRange.from, now);
+            const endTime = parseTimeString(customTimeRange.to, now);
+            const duration = endTime.getTime() - startTime.getTime();
+            points = 120;
+            interval = duration / points;
+          } else {
+            startTime = new Date(now.getTime() - 10 * 60 * 1000);
+            interval = 5000;
+            points = 120;
+          }
+          break;
         default:
           startTime = new Date(now.getTime() - 10 * 60 * 1000);
           interval = 5000;
@@ -85,7 +150,7 @@ export const useTimeSeriesData = (
       console.log("Mock data:", data);
       return data;
     },
-    [],
+    [customTimeRange],
   );
 
   // 从 API 获取数据
@@ -125,7 +190,8 @@ export const useTimeSeriesData = (
 
   // 动态更新（仅用于模拟数据和非历史范围）
   useEffect(() => {
-    if (!mockData || timeRange === "yesterday") return;
+    if (!mockData || timeRange === "yesterday" || timeRange === "custom")
+      return;
 
     const timer = setInterval(() => {
       setData((prevData) => {
