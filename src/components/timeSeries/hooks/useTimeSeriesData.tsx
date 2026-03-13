@@ -180,9 +180,9 @@ export const useTimeSeriesData = (
 
         // 转换数据格式，支持自定义字段映射
         const transformedData = (result.data || result || []).map(
-          (item: any) => ({
-            timestamp: item[timestampField],
-            value: item[valueField],
+          (item: Record<string, unknown>) => ({
+            timestamp: String(item[timestampField]),
+            value: item[valueField] as number,
           }),
         );
         console.log("Transformed data:", transformedData);
@@ -255,22 +255,23 @@ export const useTimeSeriesData = (
       eventSource.onmessage = (event) => {
         try {
           const rawData = JSON.parse(event.data);
-          
           // 处理数组数据
           if (Array.isArray(rawData)) {
-            const newDataPoints: TimeSeriesDataPoint[] = rawData.map((item: any) => ({
-              timestamp: item[timestampField],
-              value: item[valueField],
-            }));
-            
+            const newDataPoints: TimeSeriesDataPoint[] = rawData.map(
+              (item: Record<string, unknown>) => ({
+                timestamp: String(item[timestampField]),
+                value: item[valueField] as number,
+              }),
+            );
+
             setData((prevData) => {
               const updatedData = [...prevData, ...newDataPoints];
-              
+
               // 保持数据点数量在限制范围内
               if (updatedData.length > maxDataPoints) {
                 return updatedData.slice(updatedData.length - maxDataPoints);
               }
-              
+
               return updatedData;
             });
           } else {
@@ -279,20 +280,20 @@ export const useTimeSeriesData = (
               timestamp: rawData[timestampField],
               value: rawData[valueField],
             };
-            
+
             setData((prevData) => {
               const updatedData = [...prevData, newDataPoint];
-              
+
               // 保持数据点数量在限制范围内
               if (updatedData.length > maxDataPoints) {
                 return updatedData.slice(updatedData.length - maxDataPoints);
               }
-              
+
               return updatedData;
             });
           }
         } catch (err) {
-          console.error('解析 SSE 数据失败:', err);
+          console.error("解析 SSE 数据失败:", err);
         }
       };
 
@@ -311,11 +312,13 @@ export const useTimeSeriesData = (
 
           // 处理数组数据
           if (Array.isArray(rawData)) {
-            const newDataPoints: TimeSeriesDataPoint[] = rawData.map((item: any) => ({
-              timestamp: item[timestampField],
-              value: item[valueField],
-            }));
-            
+            const newDataPoints: TimeSeriesDataPoint[] = rawData.map(
+              (item: Record<string, unknown>) => ({
+                timestamp: String(item[timestampField]),
+                value: item[valueField] as number,
+              }),
+            );
+
             setData((prevData) => {
               const updatedData = [...prevData, ...newDataPoints];
               if (updatedData.length > maxDataPoints) {
@@ -350,9 +353,9 @@ export const useTimeSeriesData = (
 
           // 转换数据格式，支持自定义字段映射
           const initialData: TimeSeriesDataPoint[] = rawDataArray.map(
-            (item: any) => ({
-              timestamp: item[timestampField],
-              value: item[valueField],
+            (item: Record<string, unknown>) => ({
+              timestamp: String(item[timestampField]),
+              value: item[valueField] as number,
             }),
           );
 
