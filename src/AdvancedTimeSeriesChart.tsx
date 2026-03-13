@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import ReactECharts from "echarts-for-react";
 import type { EChartsOption } from "echarts";
 import * as Select from "@radix-ui/react-select";
@@ -16,6 +16,11 @@ interface AdvancedTimeSeriesChartProps {
   mockData?: boolean;
   showStats?: boolean;
   onConfigureDataSource?: () => void;
+  useSSE?: boolean; // 是否使用 SSE
+  maxDataPoints?: number; // 最大数据点数量
+  timestampField?: string; // 时间戳字段名
+  valueField?: string; // 数值字段名
+  queryParams?: Record<string, string>;
 }
 
 const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
@@ -25,6 +30,10 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
   mockData = true,
   showStats = true,
   onConfigureDataSource,
+  useSSE = false,
+  maxDataPoints = 120,
+  timestampField = "timestamp",
+  valueField = "value",
 }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>(defaultRange);
   const [showCustomRange, setShowCustomRange] = useState(false);
@@ -33,12 +42,27 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
     to: "now",
   });
 
-  const { data, loading, error, refresh } = useTimeSeriesData(timeRange, {
-    apiEndpoint,
-    mockData,
-    updateInterval: 2000,
-    customTimeRange: timeRange === "custom" ? customTimeRange : undefined,
-  });
+  const chartRef = useRef<any>(null);
+  const dataZoomStateRef = useRef<any>(null);
+
+  const { data, loading, error, refresh, isConnected } = useTimeSeriesData(
+    timeRange,
+    {
+      apiEndpoint,
+      mockData,
+      updateInterval: 2000,
+      customTimeRange: timeRange === "custom" ? customTimeRange : undefined,
+      useSSE,
+      maxDataPoints,
+      timestampField,
+      valueField,
+    },
+  );
+
+  // 当时间范围改变时，重置 dataZoom 状态
+  useEffect(() => {
+    dataZoomStateRef.current = null;
+  }, [timeRange, customTimeRange]);
 
   const timeRangeOptions: { value: TimeRange; label: string }[] = [
     { value: "10m", label: "最近10分钟" },
@@ -67,17 +91,34 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
     );
   };
 
-  // 计算统计数据
-  const stats = {
-    count: data.length,
-    latest: data[data.length - 1]?.value || 0,
-    average:
-      data.length > 0
-        ? data.reduce((sum, item) => sum + item.value, 0) / data.length
-        : 0,
-    max: data.length > 0 ? Math.max(...data.map((d) => d.value)) : 0,
-    min: data.length > 0 ? Math.min(...data.map((d) => d.value)) : 0,
+  // 监听 dataZoom 事件，保存用户的缩放状态
+  const onChartEvents = {
+    dataZoom: (params: any) => {
+      if (params.batch && params.batch.length > 0) {
+        dataZoomStateRef.current = {
+          start: params.batch[0].start,
+          end: params.batch[0].end,
+        };
+      } else if (params.start !== undefined && params.end !== undefined) {
+        dataZoomStateRef.current = {
+          start: params.start,
+          end: params.end,
+        };
+      }
+    },
   };
+
+  // 计算统计数据
+  //   const stats = {
+  //     count: data.length,
+  //     latest: data[data.length - 1]?.value || 0,
+  //     average:
+  //       data.length > 0
+  //         ? data.reduce((sum, item) => sum + item.value, 0) / data.length
+  //         : 0,
+  //     max: data.length > 0 ? Math.max(...data.map((d) => d.value)) : 0,
+  //     min: data.length > 0 ? Math.min(...data.map((d) => d.value)) : 0,
+  //   };
 
   const option: EChartsOption = {
     backgroundColor: "#1a1f2e",
@@ -159,12 +200,12 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
     dataZoom: [
       {
         type: "inside",
-        start: 0,
-        end: 100,
+        start: dataZoomStateRef.current?.start ?? 0,
+        end: dataZoomStateRef.current?.end ?? 100,
       },
       {
-        start: 0,
-        end: 100,
+        start: dataZoomStateRef.current?.start ?? 0,
+        end: dataZoomStateRef.current?.end ?? 100,
         height: 30,
       },
     ],
@@ -266,7 +307,20 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
       <div className="bg-gray-800 rounded-lg border border-gray-700 overflow-hidden">
         {/* 头部 */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700">
-          <h2 className="text-sm font-medium text-gray-200">{title}</h2>
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-medium text-gray-200">{title}</h2>
+            {useSSE && (
+              <span
+                className={`px-2 py-1 text-xs rounded-full ${
+                  isConnected
+                    ? "bg-green-900 text-green-300 border border-green-700"
+                    : "bg-red-900 text-red-300 border border-red-700"
+                }`}
+              >
+                {isConnected ? "● 已连接" : "○ 未连接"}
+              </span>
+            )}
+          </div>
 
           <div className="flex items-center gap-3">
             <Select.Root
@@ -372,16 +426,18 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
             </div>
           )}
           <ReactECharts
+            ref={chartRef}
             option={option}
             style={{ height: "100%", width: "100%" }}
-            notMerge={true}
+            notMerge={false}
             lazyUpdate={true}
+            onEvents={onChartEvents}
           />
         </div>
       </div>
 
       {/* 统计信息 */}
-      {showStats && (
+      {/* {showStats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
           <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
             <div className="text-xs text-gray-400 mb-1">数据点数</div>
@@ -414,7 +470,7 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
       {/* 自定义时间范围弹窗 */}
       {showCustomRange && (

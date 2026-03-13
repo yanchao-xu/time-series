@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export type TimeRange = "10m" | "30m" | "1h" | "1d" | "yesterday" | "custom";
 
@@ -17,6 +17,10 @@ interface UseTimeSeriesDataOptions {
   mockData?: boolean;
   updateInterval?: number; // 毫秒
   customTimeRange?: CustomTimeRange;
+  useSSE?: boolean; // 是否使用 SSE
+  maxDataPoints?: number; // 最大数据点数量
+  timestampField?: string; // 时间戳字段名，默认 'timestamp'
+  valueField?: string; // 数值字段名，默认 'value'
 }
 
 /**
@@ -61,7 +65,7 @@ const parseTimeString = (timeStr: string, referenceTime: Date): Date => {
 
 /**
  * 自定义 Hook：管理时间序列数据
- * 支持从 API 获取数据或使用模拟数据
+ * 支持从 API 获取数据、使用模拟数据或通过 SSE 实时接收数据
  */
 export const useTimeSeriesData = (
   timeRange: TimeRange,
@@ -71,13 +75,19 @@ export const useTimeSeriesData = (
     apiEndpoint,
     mockData = true,
     updateInterval = 2000,
-
     customTimeRange,
+    useSSE = false,
+    maxDataPoints = 120,
+    timestampField = "timestamp",
+    valueField = "value",
   } = options;
 
   const [data, setData] = useState<TimeSeriesDataPoint[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isConnected, setIsConnected] = useState(false);
+
+  const eventSourceRef = useRef<EventSource | null>(null);
 
   // 生成模拟数据
   const generateMockData = useCallback(
@@ -167,7 +177,16 @@ export const useTimeSeriesData = (
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const result = await response.json();
-        setData(result.data || []);
+
+        // 转换数据格式，支持自定义字段映射
+        const transformedData = (result.data || result || []).map(
+          (item: any) => ({
+            timestamp: item[timestampField],
+            value: item[valueField],
+          }),
+        );
+        console.log("Transformed data:", transformedData);
+        setData(transformedData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "获取数据失败");
         console.error("Error fetching data:", err);
@@ -175,18 +194,224 @@ export const useTimeSeriesData = (
         setLoading(false);
       }
     },
-    [apiEndpoint],
+    [apiEndpoint, timestampField, valueField],
   );
+
+  // 连接 SSE
+  const connectSSE = useCallback(() => {
+    if (!apiEndpoint || !useSSE) return;
+
+    // 关闭现有连接
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // 构建 SSE URL
+      let sseUrl: string;
+
+      // 检查是否是完整 URL（包含协议）
+      if (
+        apiEndpoint.startsWith("http://") ||
+        apiEndpoint.startsWith("https://")
+      ) {
+        const url = new URL(apiEndpoint);
+        url.searchParams.set("range", timeRange);
+        if (timeRange === "custom" && customTimeRange) {
+          url.searchParams.set("from", customTimeRange.from);
+          url.searchParams.set("to", customTimeRange.to);
+        }
+        // 添加字段映射参数
+        url.searchParams.set("timestampField", timestampField);
+        url.searchParams.set("valueField", valueField);
+        sseUrl = url.toString();
+      } else {
+        // 相对路径，手动构建查询参数
+        const params = new URLSearchParams();
+        params.set("range", timeRange);
+        if (timeRange === "custom" && customTimeRange) {
+          params.set("from", customTimeRange.from);
+          params.set("to", customTimeRange.to);
+        }
+        // 添加字段映射参数
+        params.set("timestampField", timestampField);
+        params.set("valueField", valueField);
+        sseUrl = `${apiEndpoint}?${params.toString()}`;
+      }
+
+      const eventSource = new EventSource(sseUrl);
+      eventSourceRef.current = eventSource;
+
+      eventSource.onopen = () => {
+        console.log("SSE 连接已建立");
+        setIsConnected(true);
+        setLoading(false);
+        setError(null);
+      };
+
+      eventSource.onmessage = (event) => {
+        try {
+          const rawData = JSON.parse(event.data);
+          
+          // 处理数组数据
+          if (Array.isArray(rawData)) {
+            const newDataPoints: TimeSeriesDataPoint[] = rawData.map((item: any) => ({
+              timestamp: item[timestampField],
+              value: item[valueField],
+            }));
+            
+            setData((prevData) => {
+              const updatedData = [...prevData, ...newDataPoints];
+              
+              // 保持数据点数量在限制范围内
+              if (updatedData.length > maxDataPoints) {
+                return updatedData.slice(updatedData.length - maxDataPoints);
+              }
+              
+              return updatedData;
+            });
+          } else {
+            // 处理单个数据点
+            const newDataPoint: TimeSeriesDataPoint = {
+              timestamp: rawData[timestampField],
+              value: rawData[valueField],
+            };
+            
+            setData((prevData) => {
+              const updatedData = [...prevData, newDataPoint];
+              
+              // 保持数据点数量在限制范围内
+              if (updatedData.length > maxDataPoints) {
+                return updatedData.slice(updatedData.length - maxDataPoints);
+              }
+              
+              return updatedData;
+            });
+          }
+        } catch (err) {
+          console.error('解析 SSE 数据失败:', err);
+        }
+      };
+
+      eventSource.onerror = (err) => {
+        console.error("SSE 连接错误:", err);
+        setError("SSE 连接失败，请检查服务器状态");
+        setIsConnected(false);
+        setLoading(false);
+        eventSource.close();
+      };
+
+      // 监听自定义事件（可选）
+      eventSource.addEventListener("data", (event: MessageEvent) => {
+        try {
+          const rawData = JSON.parse(event.data);
+
+          // 处理数组数据
+          if (Array.isArray(rawData)) {
+            const newDataPoints: TimeSeriesDataPoint[] = rawData.map((item: any) => ({
+              timestamp: item[timestampField],
+              value: item[valueField],
+            }));
+            
+            setData((prevData) => {
+              const updatedData = [...prevData, ...newDataPoints];
+              if (updatedData.length > maxDataPoints) {
+                return updatedData.slice(updatedData.length - maxDataPoints);
+              }
+              return updatedData;
+            });
+          } else {
+            // 处理单个数据点
+            const newDataPoint: TimeSeriesDataPoint = {
+              timestamp: rawData[timestampField],
+              value: rawData[valueField],
+            };
+
+            setData((prevData) => {
+              const updatedData = [...prevData, newDataPoint];
+              if (updatedData.length > maxDataPoints) {
+                return updatedData.slice(updatedData.length - maxDataPoints);
+              }
+              return updatedData;
+            });
+          }
+        } catch (err) {
+          console.error("解析自定义 SSE 事件失败:", err);
+        }
+      });
+
+      // 监听初始数据批量加载（可选）
+      eventSource.addEventListener("init", (event: MessageEvent) => {
+        try {
+          const rawDataArray = JSON.parse(event.data);
+
+          // 转换数据格式，支持自定义字段映射
+          const initialData: TimeSeriesDataPoint[] = rawDataArray.map(
+            (item: any) => ({
+              timestamp: item[timestampField],
+              value: item[valueField],
+            }),
+          );
+
+          setData(initialData);
+        } catch (err) {
+          console.error("解析初始数据失败:", err);
+        }
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建 SSE 连接失败");
+      setLoading(false);
+      console.error("SSE 连接错误:", err);
+    }
+  }, [
+    apiEndpoint,
+    useSSE,
+    timeRange,
+    customTimeRange,
+    maxDataPoints,
+    timestampField,
+    valueField,
+  ]);
+
+  // 断开 SSE 连接
+  const disconnectSSE = useCallback(() => {
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+      eventSourceRef.current = null;
+      setIsConnected(false);
+      console.log("SSE 连接已关闭");
+    }
+  }, []);
 
   // 初始化数据
   useEffect(() => {
     if (mockData) {
       const initialData = generateMockData(timeRange);
       setData(initialData);
+    } else if (useSSE) {
+      connectSSE();
     } else {
       fetchDataFromAPI(timeRange);
     }
-  }, [timeRange, mockData, generateMockData, fetchDataFromAPI]);
+
+    // 清理函数：断开 SSE 连接
+    return () => {
+      if (useSSE) {
+        disconnectSSE();
+      }
+    };
+  }, [
+    timeRange,
+    mockData,
+    useSSE,
+    generateMockData,
+    fetchDataFromAPI,
+    connectSSE,
+    disconnectSSE,
+  ]);
 
   // 动态更新（仅用于模拟数据和非历史范围）
   useEffect(() => {
@@ -224,15 +449,31 @@ export const useTimeSeriesData = (
     if (mockData) {
       const newData = generateMockData(timeRange);
       setData(newData);
+    } else if (useSSE) {
+      // 重新连接 SSE
+      disconnectSSE();
+      setData([]);
+      connectSSE();
     } else {
       fetchDataFromAPI(timeRange);
     }
-  }, [mockData, timeRange, generateMockData, fetchDataFromAPI]);
+  }, [
+    mockData,
+    useSSE,
+    timeRange,
+    generateMockData,
+    fetchDataFromAPI,
+    connectSSE,
+    disconnectSSE,
+  ]);
 
   return {
     data,
     loading,
     error,
     refresh,
+    isConnected, // SSE 连接状态
+    connectSSE,
+    disconnectSSE,
   };
 };
