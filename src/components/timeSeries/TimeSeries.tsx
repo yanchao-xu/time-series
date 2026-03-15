@@ -22,7 +22,7 @@ function TimeSeries({
   const [viewMode, setViewMode] = useState<"realtime" | "comparison">(
     "realtime",
   );
-  console.log("apiEndpoint", apiEndpoint);
+
   return (
     <div className="p-8 ">
       <div className="mx-auto max-w-7xl">
