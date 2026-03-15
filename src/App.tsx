@@ -1,7 +1,8 @@
 import "./App.css";
 import TimeSeries from "./components/timeSeries";
 
-function App() {
+function App(params: Record<string, unknown>) {
+  console.log("params", params);
   return (
     <TimeSeries
       title="PUMP01 出口温度"

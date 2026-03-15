@@ -15,16 +15,16 @@ interface TimeSeriesDataPoint {
 interface UseTimeSeriesDataOptions {
   apiEndpoint?: string;
   mockData?: boolean;
-  updateInterval?: number; // 毫秒
+  updateInterval?: number; // milliseconds
   customTimeRange?: CustomTimeRange;
-  useSSE?: boolean; // 是否使用 SSE
-  maxDataPoints?: number; // 最大数据点数量
-  timestampField?: string; // 时间戳字段名，默认 'timestamp'
-  valueField?: string; // 数值字段名，默认 'value'
+  useSSE?: boolean; // Whether to use SSE
+  maxDataPoints?: number; // Maximum number of data points
+  timestampField?: string; // Timestamp field name, default 'timestamp'
+  valueField?: string; // Value field name, default 'value'
 }
 
 /**
- * 解析时间字符串（支持 now, now-5m, now-1h, now-1d 或 ISO 日期时间）
+ * Parse time string (supports now, now-5m, now-1h, now-1d or ISO datetime)
  */
 const parseTimeString = (timeStr: string, referenceTime: Date): Date => {
   if (timeStr === "now") {
@@ -53,19 +53,19 @@ const parseTimeString = (timeStr: string, referenceTime: Date): Date => {
     return time;
   }
 
-  // 尝试解析为 ISO 日期时间
+  // Try to parse as ISO datetime
   const isoDate = new Date(timeStr);
   if (!isNaN(isoDate.getTime())) {
     return isoDate;
   }
 
-  // 默认返回当前时间
+  // Default to current time
   return new Date(referenceTime);
 };
 
 /**
- * 自定义 Hook：管理时间序列数据
- * 支持从 API 获取数据、使用模拟数据或通过 SSE 实时接收数据
+ * Custom Hook: Manage time series data
+ * Supports fetching data from API, using mock data, or receiving real-time data via SSE
  */
 export const useTimeSeriesData = (
   timeRange: TimeRange,
@@ -188,7 +188,7 @@ export const useTimeSeriesData = (
         console.log("Transformed data:", transformedData);
         setData(transformedData);
       } catch (err) {
-        setError(err instanceof Error ? err.message : "获取数据失败");
+        setError(err instanceof Error ? err.message : "Failed to fetch data");
         console.error("Error fetching data:", err);
       } finally {
         setLoading(false);
@@ -197,11 +197,11 @@ export const useTimeSeriesData = (
     [apiEndpoint, timestampField, valueField],
   );
 
-  // 连接 SSE
+  // Connect SSE
   const connectSSE = useCallback(() => {
     if (!apiEndpoint || !useSSE) return;
 
-    // 关闭现有连接
+    // Close existing connection
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
     }
@@ -246,7 +246,7 @@ export const useTimeSeriesData = (
       eventSourceRef.current = eventSource;
 
       eventSource.onopen = () => {
-        console.log("SSE 连接已建立");
+        console.log("SSE connection established");
         setIsConnected(true);
         setLoading(false);
         setError(null);
@@ -265,7 +265,23 @@ export const useTimeSeriesData = (
             );
 
             setData((prevData) => {
-              const updatedData = [...prevData, ...newDataPoints];
+              // 合并数据并按时间戳去重
+              const dataMap = new Map<string, number>();
+
+              // 先添加旧数据
+              prevData.forEach(point => {
+                dataMap.set(point.timestamp, point.value);
+              });
+
+              // 新数据会覆盖相同时间戳的旧数据
+              newDataPoints.forEach(point => {
+                dataMap.set(point.timestamp, point.value);
+              });
+
+              // 转换回数组并按时间排序
+              const updatedData = Array.from(dataMap.entries())
+                .map(([timestamp, value]) => ({ timestamp, value }))
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
               // 保持数据点数量在限制范围内
               if (updatedData.length > maxDataPoints) {
@@ -282,7 +298,20 @@ export const useTimeSeriesData = (
             };
 
             setData((prevData) => {
-              const updatedData = [...prevData, newDataPoint];
+              // 按时间戳去重
+              const dataMap = new Map<string, number>();
+
+              prevData.forEach(point => {
+                dataMap.set(point.timestamp, point.value);
+              });
+
+              // 新数据会覆盖相同时间戳的旧数据
+              dataMap.set(newDataPoint.timestamp, newDataPoint.value);
+
+              // 转换回数组并按时间排序
+              const updatedData = Array.from(dataMap.entries())
+                .map(([timestamp, value]) => ({ timestamp, value }))
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
               // 保持数据点数量在限制范围内
               if (updatedData.length > maxDataPoints) {
@@ -298,8 +327,8 @@ export const useTimeSeriesData = (
       };
 
       eventSource.onerror = (err) => {
-        console.error("SSE 连接错误:", err);
-        setError("SSE 连接失败，请检查服务器状态");
+        console.error("SSE connection error:", err);
+        setError("SSE connection failed, please check server status");
         setIsConnected(false);
         setLoading(false);
         eventSource.close();
@@ -320,7 +349,21 @@ export const useTimeSeriesData = (
             );
 
             setData((prevData) => {
-              const updatedData = [...prevData, ...newDataPoints];
+              // 按时间戳去重
+              const dataMap = new Map<string, number>();
+
+              prevData.forEach(point => {
+                dataMap.set(point.timestamp, point.value);
+              });
+
+              newDataPoints.forEach(point => {
+                dataMap.set(point.timestamp, point.value);
+              });
+
+              const updatedData = Array.from(dataMap.entries())
+                .map(([timestamp, value]) => ({ timestamp, value }))
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
               if (updatedData.length > maxDataPoints) {
                 return updatedData.slice(updatedData.length - maxDataPoints);
               }
@@ -334,7 +377,19 @@ export const useTimeSeriesData = (
             };
 
             setData((prevData) => {
-              const updatedData = [...prevData, newDataPoint];
+              // 按时间戳去重
+              const dataMap = new Map<string, number>();
+
+              prevData.forEach(point => {
+                dataMap.set(point.timestamp, point.value);
+              });
+
+              dataMap.set(newDataPoint.timestamp, newDataPoint.value);
+
+              const updatedData = Array.from(dataMap.entries())
+                .map(([timestamp, value]) => ({ timestamp, value }))
+                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
               if (updatedData.length > maxDataPoints) {
                 return updatedData.slice(updatedData.length - maxDataPoints);
               }
@@ -346,7 +401,7 @@ export const useTimeSeriesData = (
         }
       });
 
-      // 监听初始数据批量加载（可选）
+      // Listen for initial data batch load (optional)
       eventSource.addEventListener("init", (event: MessageEvent) => {
         try {
           const rawDataArray = JSON.parse(event.data);
@@ -365,9 +420,11 @@ export const useTimeSeriesData = (
         }
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建 SSE 连接失败");
+      setError(
+        err instanceof Error ? err.message : "Failed to create SSE connection",
+      );
       setLoading(false);
-      console.error("SSE 连接错误:", err);
+      console.error("SSE connection error:", err);
     }
   }, [
     apiEndpoint,
@@ -379,13 +436,13 @@ export const useTimeSeriesData = (
     valueField,
   ]);
 
-  // 断开 SSE 连接
+  // Disconnect SSE
   const disconnectSSE = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
       setIsConnected(false);
-      console.log("SSE 连接已关闭");
+      console.log("SSE connection closed");
     }
   }, []);
 
@@ -400,7 +457,7 @@ export const useTimeSeriesData = (
       fetchDataFromAPI(timeRange);
     }
 
-    // 清理函数：断开 SSE 连接
+    // Cleanup function: disconnect SSE
     return () => {
       if (useSSE) {
         disconnectSSE();
@@ -423,21 +480,31 @@ export const useTimeSeriesData = (
 
     const timer = setInterval(() => {
       setData((prevData) => {
-        const newData = [...prevData];
         const now = new Date();
-        const lastValue = newData[newData.length - 1]?.value || 50;
+        const timestamp = now.toISOString();
+        const lastValue = prevData[prevData.length - 1]?.value || 50;
 
         const change = (Math.random() - 0.5) * 5;
         const newValue = Math.max(0, lastValue + change);
 
-        newData.push({
-          timestamp: now.toISOString(),
-          value: newValue,
+        // 按时间戳去重
+        const dataMap = new Map<string, number>();
+
+        prevData.forEach(point => {
+          dataMap.set(point.timestamp, point.value);
         });
+
+        // 添加新数据点
+        dataMap.set(timestamp, newValue);
+
+        // 转换回数组并按时间排序
+        const newData = Array.from(dataMap.entries())
+          .map(([timestamp, value]) => ({ timestamp, value }))
+          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
         // 滑动窗口：保持固定数量
         if (newData.length > 120) {
-          newData.shift();
+          return newData.slice(newData.length - 120);
         }
 
         return newData;
@@ -453,7 +520,7 @@ export const useTimeSeriesData = (
       const newData = generateMockData(timeRange);
       setData(newData);
     } else if (useSSE) {
-      // 重新连接 SSE
+      // Reconnect SSE
       disconnectSSE();
       setData([]);
       connectSSE();
@@ -475,7 +542,7 @@ export const useTimeSeriesData = (
     loading,
     error,
     refresh,
-    isConnected, // SSE 连接状态
+    isConnected, // SSE connection status
     connectSSE,
     disconnectSSE,
   };

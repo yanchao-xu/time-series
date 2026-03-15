@@ -1,15 +1,15 @@
-import React from 'react';
-import { createRoot } from 'react-dom/client';
-import App from './App';
-import './style.css';
-import type { MountParams, MountReturn } from '../icp-extension.types';
+import React from "react";
+import { createRoot } from "react-dom/client";
+import App from "./App";
+import "./style.css";
+import type { MountParams, MountReturn } from "../icp-extension.types";
 
 export default function mount<T>(
   element: HTMLElement,
   { params, formApi, messageApi, restApi, i18nApi, routerApi }: MountParams<T>,
 ): MountReturn<T> {
   const root = createRoot(element);
-  root.render(<App />)
+  root.render(<App {...params} />);
 
   return () => {
     root.unmount();
