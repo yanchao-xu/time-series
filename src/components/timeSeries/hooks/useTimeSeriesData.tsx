@@ -21,6 +21,7 @@ interface UseTimeSeriesDataOptions {
   maxDataPoints?: number; // Maximum number of data points
   timestampField?: string; // Timestamp field name, default 'timestamp'
   valueField?: string; // Value field name, default 'value'
+  sseExternalId?: string; // Filter SSE multi-sensor data by externalId
 }
 
 /**
@@ -80,6 +81,7 @@ export const useTimeSeriesData = (
     maxDataPoints = 120,
     timestampField = "timestamp",
     valueField = "value",
+    sseExternalId,
   } = options;
 
   const [data, setData] = useState<TimeSeriesDataPoint[]>([]);
@@ -185,7 +187,6 @@ export const useTimeSeriesData = (
             value: item[valueField] as number,
           }),
         );
-        console.log("Transformed data:", transformedData);
         setData(transformedData);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Failed to fetch data");
@@ -255,6 +256,56 @@ export const useTimeSeriesData = (
       eventSource.onmessage = (event) => {
         try {
           const rawData = JSON.parse(event.data);
+
+          // Handle multi-sensor SSE format: {type: 'init'|'update', timeseries: [...]}
+          if (
+            sseExternalId &&
+            rawData.type &&
+            Array.isArray(rawData.timeseries)
+          ) {
+            const match = rawData.timeseries.find(
+              (ts: { externalId: string }) => ts.externalId === sseExternalId,
+            );
+            if (!match) return;
+
+            const newPoints: TimeSeriesDataPoint[] = match.datapoints.map(
+              (dp: { timestamp: number; value: number }) => ({
+                timestamp: new Date(dp.timestamp).toISOString(),
+                value: dp.value,
+              }),
+            );
+            if (rawData.type === "init") {
+              // 历史数据：直接替换，按时间升序
+              setData(
+                [...newPoints].sort(
+                  (a, b) =>
+                    new Date(a.timestamp).getTime() -
+                    new Date(b.timestamp).getTime(),
+                ),
+              );
+            } else {
+              // 增量更新：合并去重
+              setData((prevData) => {
+                const dataMap = new Map<string, number>();
+                prevData.forEach((p) => dataMap.set(p.timestamp, p.value));
+                newPoints.forEach((p) => dataMap.set(p.timestamp, p.value));
+
+                const merged = Array.from(dataMap.entries())
+                  .map(([timestamp, value]) => ({ timestamp, value }))
+                  .sort(
+                    (a, b) =>
+                      new Date(a.timestamp).getTime() -
+                      new Date(b.timestamp).getTime(),
+                  );
+
+                return merged.length > maxDataPoints
+                  ? merged.slice(merged.length - maxDataPoints)
+                  : merged;
+              });
+            }
+            return;
+          }
+
           // 处理数组数据
           if (Array.isArray(rawData)) {
             const newDataPoints: TimeSeriesDataPoint[] = rawData.map(
@@ -269,25 +320,28 @@ export const useTimeSeriesData = (
               const dataMap = new Map<string, number>();
 
               // 先添加旧数据
-              prevData.forEach(point => {
+              prevData.forEach((point) => {
                 dataMap.set(point.timestamp, point.value);
               });
 
               // 新数据会覆盖相同时间戳的旧数据
-              newDataPoints.forEach(point => {
+              newDataPoints.forEach((point) => {
                 dataMap.set(point.timestamp, point.value);
               });
 
               // 转换回数组并按时间排序
               const updatedData = Array.from(dataMap.entries())
                 .map(([timestamp, value]) => ({ timestamp, value }))
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                .sort(
+                  (a, b) =>
+                    new Date(a.timestamp).getTime() -
+                    new Date(b.timestamp).getTime(),
+                );
 
               // 保持数据点数量在限制范围内
               if (updatedData.length > maxDataPoints) {
                 return updatedData.slice(updatedData.length - maxDataPoints);
               }
-
               return updatedData;
             });
           } else {
@@ -296,12 +350,12 @@ export const useTimeSeriesData = (
               timestamp: rawData[timestampField],
               value: rawData[valueField],
             };
-
+            console.log("rawData", rawData);
             setData((prevData) => {
               // 按时间戳去重
               const dataMap = new Map<string, number>();
 
-              prevData.forEach(point => {
+              prevData.forEach((point) => {
                 dataMap.set(point.timestamp, point.value);
               });
 
@@ -311,7 +365,11 @@ export const useTimeSeriesData = (
               // 转换回数组并按时间排序
               const updatedData = Array.from(dataMap.entries())
                 .map(([timestamp, value]) => ({ timestamp, value }))
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                .sort(
+                  (a, b) =>
+                    new Date(a.timestamp).getTime() -
+                    new Date(b.timestamp).getTime(),
+                );
 
               // 保持数据点数量在限制范围内
               if (updatedData.length > maxDataPoints) {
@@ -352,17 +410,21 @@ export const useTimeSeriesData = (
               // 按时间戳去重
               const dataMap = new Map<string, number>();
 
-              prevData.forEach(point => {
+              prevData.forEach((point) => {
                 dataMap.set(point.timestamp, point.value);
               });
 
-              newDataPoints.forEach(point => {
+              newDataPoints.forEach((point) => {
                 dataMap.set(point.timestamp, point.value);
               });
 
               const updatedData = Array.from(dataMap.entries())
                 .map(([timestamp, value]) => ({ timestamp, value }))
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                .sort(
+                  (a, b) =>
+                    new Date(a.timestamp).getTime() -
+                    new Date(b.timestamp).getTime(),
+                );
 
               if (updatedData.length > maxDataPoints) {
                 return updatedData.slice(updatedData.length - maxDataPoints);
@@ -380,7 +442,7 @@ export const useTimeSeriesData = (
               // 按时间戳去重
               const dataMap = new Map<string, number>();
 
-              prevData.forEach(point => {
+              prevData.forEach((point) => {
                 dataMap.set(point.timestamp, point.value);
               });
 
@@ -388,7 +450,11 @@ export const useTimeSeriesData = (
 
               const updatedData = Array.from(dataMap.entries())
                 .map(([timestamp, value]) => ({ timestamp, value }))
-                .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+                .sort(
+                  (a, b) =>
+                    new Date(a.timestamp).getTime() -
+                    new Date(b.timestamp).getTime(),
+                );
 
               if (updatedData.length > maxDataPoints) {
                 return updatedData.slice(updatedData.length - maxDataPoints);
@@ -434,6 +500,7 @@ export const useTimeSeriesData = (
     maxDataPoints,
     timestampField,
     valueField,
+    sseExternalId,
   ]);
 
   // Disconnect SSE
@@ -490,7 +557,7 @@ export const useTimeSeriesData = (
         // 按时间戳去重
         const dataMap = new Map<string, number>();
 
-        prevData.forEach(point => {
+        prevData.forEach((point) => {
           dataMap.set(point.timestamp, point.value);
         });
 
@@ -500,7 +567,10 @@ export const useTimeSeriesData = (
         // 转换回数组并按时间排序
         const newData = Array.from(dataMap.entries())
           .map(([timestamp, value]) => ({ timestamp, value }))
-          .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+          .sort(
+            (a, b) =>
+              new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime(),
+          );
 
         // 滑动窗口：保持固定数量
         if (newData.length > 120) {

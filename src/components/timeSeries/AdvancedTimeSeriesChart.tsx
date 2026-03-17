@@ -21,6 +21,7 @@ interface AdvancedTimeSeriesChartProps {
   timestampField?: string; // Timestamp field name
   valueField?: string; // Value field name
   queryParams?: Record<string, string>;
+  sseExternalId?: string; // Filter SSE data by externalId
 }
 
 const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
@@ -34,6 +35,7 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
   maxDataPoints = 120,
   timestampField = "timestamp",
   valueField = "value",
+  sseExternalId,
 }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>(defaultRange);
   const [showCustomRange, setShowCustomRange] = useState(false);
@@ -59,6 +61,7 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
       maxDataPoints,
       timestampField,
       valueField,
+      sseExternalId,
     },
   );
 
@@ -315,16 +318,21 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
   }
 
   return (
-    <div className="flex h-full w-full flex-col gap-4">
+    <div className="relative flex h-full w-full flex-col gap-4">
       {/* Chart Card */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-lg">
         {/* Header */}
-        <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-semibold text-gray-900">{title}</h2>
+        <div className="flex flex-nowrap items-center justify-between gap-4 border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <h2
+              className="truncate text-base font-semibold text-gray-900"
+              title={title}
+            >
+              {title}
+            </h2>
             {useSSE && (
               <span
-                className={`rounded-full px-3 py-1 text-xs font-medium ${
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap ${
                   isConnected
                     ? "border border-green-400 bg-green-50 text-green-700"
                     : "border border-red-400 bg-red-50 text-red-700"
@@ -335,7 +343,7 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex shrink-0 items-center gap-3">
             <Select.Root
               value={timeRange === "custom" ? "custom" : timeRange}
               onValueChange={(value) => {
@@ -358,52 +366,17 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
                 </Select.Icon>
               </Select.Trigger>
 
-              <Select.Portal container={document.body}>
-                <Select.Content
-                  style={selectContentStyle}
-                  position="popper"
-                  sideOffset={5}
-                  className="z-[9999]"
-                >
-                  <Select.Viewport style={{ padding: "4px" }}>
-                    {timeRangeOptions.map((option) => (
-                      <Select.Item
-                        key={option.value}
-                        value={option.value}
-                        style={selectItemStyle}
-                        onMouseEnter={(e) => {
-                          Object.assign(
-                            e.currentTarget.style,
-                            selectItemHoverStyle,
-                          );
-                        }}
-                        onMouseLeave={(e) => {
-                          Object.assign(e.currentTarget.style, selectItemStyle);
-                        }}
-                      >
-                        <Select.ItemText>{option.label}</Select.ItemText>
-                        <Select.ItemIndicator
-                          style={{ position: "absolute", left: "8px" }}
-                        >
-                          <CheckIcon
-                            style={{
-                              width: "14px",
-                              height: "14px",
-                              color: "#60a5fa",
-                            }}
-                          />
-                        </Select.ItemIndicator>
-                      </Select.Item>
-                    ))}
-                    <Select.Separator
-                      style={{
-                        height: "1px",
-                        background: "#e5e7eb",
-                        margin: "4px 0",
-                      }}
-                    />
+              <Select.Content
+                style={selectContentStyle}
+                position="popper"
+                sideOffset={5}
+                className="z-[9999]"
+              >
+                <Select.Viewport style={{ padding: "4px" }}>
+                  {timeRangeOptions.map((option) => (
                     <Select.Item
-                      value="custom"
+                      key={option.value}
+                      value={option.value}
                       style={selectItemStyle}
                       onMouseEnter={(e) => {
                         Object.assign(
@@ -415,11 +388,44 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
                         Object.assign(e.currentTarget.style, selectItemStyle);
                       }}
                     >
-                      <Select.ItemText>Custom Time...</Select.ItemText>
+                      <Select.ItemText>{option.label}</Select.ItemText>
+                      <Select.ItemIndicator
+                        style={{ position: "absolute", left: "8px" }}
+                      >
+                        <CheckIcon
+                          style={{
+                            width: "14px",
+                            height: "14px",
+                            color: "#60a5fa",
+                          }}
+                        />
+                      </Select.ItemIndicator>
                     </Select.Item>
-                  </Select.Viewport>
-                </Select.Content>
-              </Select.Portal>
+                  ))}
+                  <Select.Separator
+                    style={{
+                      height: "1px",
+                      background: "#e5e7eb",
+                      margin: "4px 0",
+                    }}
+                  />
+                  <Select.Item
+                    value="custom"
+                    style={selectItemStyle}
+                    onMouseEnter={(e) => {
+                      Object.assign(
+                        e.currentTarget.style,
+                        selectItemHoverStyle,
+                      );
+                    }}
+                    onMouseLeave={(e) => {
+                      Object.assign(e.currentTarget.style, selectItemStyle);
+                    }}
+                  >
+                    <Select.ItemText>Custom Time...</Select.ItemText>
+                  </Select.Item>
+                </Select.Viewport>
+              </Select.Content>
             </Select.Root>
 
             <button
@@ -455,47 +461,11 @@ const AdvancedTimeSeriesChart: React.FC<AdvancedTimeSeriesChartProps> = ({
         </div>
       </div>
 
-      {/* 统计信息 */}
-      {/* {showStats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-xs text-gray-400 mb-1">数据点数</div>
-            <div className="text-xl font-semibold text-gray-200">
-              {stats.count}
-            </div>
-          </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-xs text-gray-400 mb-1">最新值</div>
-            <div className="text-xl font-semibold text-blue-400">
-              {stats.latest.toFixed(2)}
-            </div>
-          </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-xs text-gray-400 mb-1">平均值</div>
-            <div className="text-xl font-semibold text-green-400">
-              {stats.average.toFixed(2)}
-            </div>
-          </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-xs text-gray-400 mb-1">最大值</div>
-            <div className="text-xl font-semibold text-red-400">
-              {stats.max.toFixed(2)}
-            </div>
-          </div>
-          <div className="bg-gray-800 border border-gray-700 rounded-lg p-4">
-            <div className="text-xs text-gray-400 mb-1">最小值</div>
-            <div className="text-xl font-semibold text-purple-400">
-              {stats.min.toFixed(2)}
-            </div>
-          </div>
-        </div>
-      )} */}
-
       {/* Custom Time Range Dialog */}
       {showCustomRange && (
         <div
           style={{
-            position: "fixed",
+            position: "absolute",
             inset: 0,
             background: "rgba(0, 0, 0, 0.4)",
             display: "flex",

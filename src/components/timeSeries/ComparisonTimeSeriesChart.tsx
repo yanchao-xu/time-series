@@ -30,6 +30,7 @@ interface ComparisonTimeSeriesChartProps {
   timestampField?: string; // Timestamp field name
   valueField?: string; // Value field name
   queryParams?: Record<string, string>;
+  sseExternalId?: string; // Filter timeseries by externalId from comparison API
 }
 
 const PRESET_COLORS = [
@@ -49,6 +50,7 @@ const ComparisonTimeSeriesChart: React.FC<ComparisonTimeSeriesChartProps> = ({
   alignBy = "relative",
   timestampField = "timestamp",
   valueField = "value",
+  sseExternalId,
 }) => {
   const [periods, setPeriods] = useState<TimePeriod[]>([]);
   const [alignMode, setAlignMode] = useState<"absolute" | "relative">(alignBy);
@@ -101,7 +103,7 @@ const ComparisonTimeSeriesChart: React.FC<ComparisonTimeSeriesChartProps> = ({
     try {
       const fromISO = new Date(from).toISOString();
       const toISO = new Date(to).toISOString();
-      const url = `${apiEndpoint}?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}`;
+      const url = `${apiEndpoint}?from=${encodeURIComponent(fromISO)}&to=${encodeURIComponent(toISO)}&limit=1000`;
 
       const response = await fetch(url);
       if (!response.ok) {
@@ -110,7 +112,28 @@ const ComparisonTimeSeriesChart: React.FC<ComparisonTimeSeriesChartProps> = ({
 
       const rawData = await response.json();
 
-      // Transform data format, support custom field mapping
+      // Handle timeseries format: { assetId, timeseries: [{ externalId, datapoints }] }
+      if (
+        sseExternalId &&
+        rawData.timeseries &&
+        Array.isArray(rawData.timeseries)
+      ) {
+        const match = rawData.timeseries.find(
+          (ts: { externalId: string }) => ts.externalId === sseExternalId,
+        );
+        if (!match || !Array.isArray(match.datapoints)) {
+          console.warn(`No timeseries found for externalId: ${sseExternalId}`);
+          return [];
+        }
+        return match.datapoints.map(
+          (dp: { timestamp: number; value: number }) => ({
+            timestamp: new Date(dp.timestamp).toISOString(),
+            value: dp.value,
+          }),
+        );
+      }
+
+      // Fallback: generic format with custom field mapping
       const transformedData: TimeSeriesDataPoint[] = (
         Array.isArray(rawData) ? rawData : rawData.data || []
       ).map((item: Record<string, unknown>) => ({
@@ -313,9 +336,9 @@ const ComparisonTimeSeriesChart: React.FC<ComparisonTimeSeriesChartProps> = ({
   };
 
   return (
-    <div className="flex h-full w-full flex-col gap-4">
+    <div className="relative flex h-full w-full flex-col gap-4">
       {/* Chart Card */}
-      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-lg">
+      <div className="rounded-xl border border-gray-200 bg-white shadow-lg">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-200 bg-gradient-to-r from-gray-50 to-white px-6 py-4">
           <h2 className="text-base font-semibold text-gray-900">{title}</h2>
@@ -333,34 +356,32 @@ const ComparisonTimeSeriesChart: React.FC<ComparisonTimeSeriesChartProps> = ({
                   <ChevronDownIcon className="h-4 w-4 text-gray-500" />
                 </Select.Icon>
               </Select.Trigger>
-              <Select.Portal>
-                <Select.Content
-                  className="z-50 rounded-lg border border-gray-300 bg-white shadow-xl"
-                  position="popper"
-                  sideOffset={5}
-                >
-                  <Select.Viewport className="p-1">
-                    <Select.Item
-                      value="absolute"
-                      className="relative flex cursor-pointer items-center rounded px-3 py-2 text-sm text-gray-700 outline-none hover:bg-gray-100 focus:bg-gray-100 data-[highlighted]:bg-gray-100"
-                    >
-                      <Select.ItemText>Absolute Time Alignment</Select.ItemText>
-                      <Select.ItemIndicator className="absolute right-2">
-                        <CheckIcon className="h-4 w-4" />
-                      </Select.ItemIndicator>
-                    </Select.Item>
-                    <Select.Item
-                      value="relative"
-                      className="relative flex cursor-pointer items-center rounded px-3 py-2 text-sm text-gray-700 outline-none hover:bg-gray-100 focus:bg-gray-100 data-[highlighted]:bg-gray-100"
-                    >
-                      <Select.ItemText>Relative Time Alignment</Select.ItemText>
-                      <Select.ItemIndicator className="absolute right-2">
-                        <CheckIcon className="h-4 w-4" />
-                      </Select.ItemIndicator>
-                    </Select.Item>
-                  </Select.Viewport>
-                </Select.Content>
-              </Select.Portal>
+              <Select.Content
+                className="z-50 rounded-lg border border-gray-300 bg-white shadow-xl"
+                position="popper"
+                sideOffset={5}
+              >
+                <Select.Viewport className="p-1">
+                  <Select.Item
+                    value="absolute"
+                    className="relative flex cursor-pointer items-center rounded px-3 py-2 text-sm text-gray-700 outline-none hover:bg-gray-100 focus:bg-gray-100 data-[highlighted]:bg-gray-100"
+                  >
+                    <Select.ItemText>Absolute Time Alignment</Select.ItemText>
+                    <Select.ItemIndicator className="absolute right-2">
+                      <CheckIcon className="h-4 w-4" />
+                    </Select.ItemIndicator>
+                  </Select.Item>
+                  <Select.Item
+                    value="relative"
+                    className="relative flex cursor-pointer items-center rounded px-3 py-2 text-sm text-gray-700 outline-none hover:bg-gray-100 focus:bg-gray-100 data-[highlighted]:bg-gray-100"
+                  >
+                    <Select.ItemText>Relative Time Alignment</Select.ItemText>
+                    <Select.ItemIndicator className="absolute right-2">
+                      <CheckIcon className="h-4 w-4" />
+                    </Select.ItemIndicator>
+                  </Select.Item>
+                </Select.Viewport>
+              </Select.Content>
             </Select.Root>
 
             <button
@@ -457,7 +478,7 @@ const ComparisonTimeSeriesChart: React.FC<ComparisonTimeSeriesChartProps> = ({
 
       {/* Add Period Dialog */}
       {showAddPeriod && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm">
+        <div className="absolute inset-0 z-50 flex items-center justify-center rounded-xl bg-black/40 p-4 backdrop-blur-sm">
           <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-2xl">
             <h3 className="mb-5 text-lg font-semibold text-gray-900">
               Add Comparison Period
