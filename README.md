@@ -6,30 +6,94 @@
 
 - ✅ 多种时间范围：10分钟、30分钟、1小时、1天、昨天
 - ✅ 实时数据更新（滑动窗口）
+- ✅ SSE (Server-Sent Events) 实时数据流支持
 - ✅ 平滑动画过渡
 - ✅ 数据降采样（LTTB算法）
 - ✅ 交互式缩放和拖拽
 - ✅ 统计信息展示（最新值、平均值、最大值、最小值）
 - ✅ 支持模拟数据和真实API
+- ✅ 配置数据源URL和查询参数
+- ✅ 自定义字段映射（支持不同的API数据格式）
+- ✅ 可视化配置界面（无需修改代码）
 - ✅ 响应式设计
 
 ## 快速开始
 
 ### 安装依赖
 
-\`\`\`bash
+```bash
 npm install
-\`\`\`
+```
 
 ### 启动开发服务器
 
-\`\`\`bash
+```bash
 npm run dev
-\`\`\`
+```
 
-## 组件使用
+打开浏览器访问 http://localhost:5173，你将看到一个带有可视化配置界面的时间序列图表！
 
-### 基础版本（TimeSeriesChart）
+## 使用方式
+
+### 方式 1：SSE 实时数据流（推荐用于实时监控）
+
+使用 Server-Sent Events 获取实时数据流：
+
+```tsx
+import AdvancedTimeSeriesChart from './AdvancedTimeSeriesChart';
+
+function App() {
+  return (
+    <AdvancedTimeSeriesChart 
+      title="实时监控数据"
+      defaultRange="10m"
+      mockData={false}
+      useSSE={true}
+      apiEndpoint="http://localhost:3001/api/timeseries/stream"
+      showStats={true}
+    />
+  );
+}
+```
+
+#### 启动 SSE 服务器
+
+项目包含一个示例 SSE 服务器：
+
+```bash
+# 安装依赖
+npm install express cors
+
+# 启动服务器
+node sse-server.js
+```
+
+服务器将在 `http://localhost:3001` 运行。详细的 SSE 服务器实现说明请查看 [SSE_SERVER_EXAMPLE.md](./SSE_SERVER_EXAMPLE.md)
+
+### 方式 2：可视化配置界面
+
+使用 `ConfigurableTimeSeriesChart` 组件，提供完整的配置界面：
+
+```tsx
+import ConfigurableTimeSeriesChart from './ConfigurableTimeSeriesChart';
+
+function App() {
+  return <ConfigurableTimeSeriesChart />;
+}
+```
+
+功能包括：
+- 在界面上切换模拟数据/真实 API
+- 配置 API 端点 URL
+- 添加/删除查询参数
+- 设置字段映射
+- 实时预览配置效果
+
+详细使用说明请查看 [CONFIGURATION_UI_GUIDE.md](./CONFIGURATION_UI_GUIDE.md)
+
+### 方式 3：代码配置
+
+#### 基础版本（TimeSeriesChart）
 
 简单的时间序列图表，适合快速集成：
 
@@ -48,70 +112,221 @@ function App() {
 
 ### 高级版本（AdvancedTimeSeriesChart）
 
-功能更丰富，支持API集成和统计信息：
+功能更丰富，支持API集成、统计信息和自定义配置：
 
-\`\`\`tsx
+```tsx
 import AdvancedTimeSeriesChart from './AdvancedTimeSeriesChart';
 
 function App() {
   return (
     <AdvancedTimeSeriesChart 
-      title="实时监控数据" 
-      defaultRange="10m"
-      mockData={true}
+      title="服务器监控" 
+      defaultRange="1h"
+      mockData={false}
       showStats={true}
-      // apiEndpoint="/api/timeseries" // 使用真实API时取消注释
+      apiEndpoint="https://api.example.com/metrics"
+      queryParams={{
+        server: 'server-01',
+        metric: 'cpu'
+      }}
+      valueField="usage"
+      timestampField="measured_at"
     />
   );
 }
-\`\`\`
+```
+
+#### 组件属性
+
+| 属性 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `title` | `string` | `"实时数据监控"` | 图表标题 |
+| `defaultRange` | `TimeRange` | `"10m"` | 默认时间范围 |
+| `apiEndpoint` | `string` | `undefined` | API数据源URL（REST或SSE） |
+| `mockData` | `boolean` | `true` | 是否使用模拟数据 |
+| `useSSE` | `boolean` | `false` | 是否使用SSE实时数据流 |
+| `maxDataPoints` | `number` | `120` | 最大数据点数量 |
+| `showStats` | `boolean` | `true` | 是否显示统计信息 |
+| `queryParams` | `Record<string, string \| number>` | `{}` | URL查询参数 |
+| `valueField` | `string` | `"value"` | 数值字段名 |
+| `timestampField` | `string` | `"timestamp"` | 时间戳字段名 |
 
 ## 自定义 Hook
 
 使用 `useTimeSeriesData` Hook 来管理数据：
 
-\`\`\`tsx
+```tsx
 import { useTimeSeriesData } from './hooks/useTimeSeriesData';
 
 function MyComponent() {
-  const { data, loading, error, refresh } = useTimeSeriesData('10m', {
-    apiEndpoint: '/api/data',
+  const { data, loading, error, refresh, isConnected } = useTimeSeriesData('10m', {
+    apiEndpoint: 'https://api.example.com/metrics',
     mockData: false,
+    useSSE: true,
     updateInterval: 2000,
+    maxDataPoints: 120,
+    queryParams: { server: 'server-01' },
+    valueField: 'metric',
+    timestampField: 'time',
   });
 
   // 使用 data 进行自定义渲染
+  // isConnected 显示 SSE 连接状态
 }
-\`\`\`
+```
 
-## API 集成
+## SSE 数据流配置
 
-如果要连接真实的后端API，你的API应该返回以下格式：
+### 启用 SSE
 
-\`\`\`json
+```tsx
+<AdvancedTimeSeriesChart
+  apiEndpoint="http://localhost:3001/api/timeseries/stream"
+  mockData={false}
+  useSSE={true}
+/>
+```
+
+### SSE 数据格式
+
+服务器应发送以下格式的 SSE 消息：
+
+**标准消息（实时数据点）：**
+```
+data: {"timestamp":"2024-01-01T12:00:00.000Z","value":75.5}\n\n
+```
+
+**初始数据批量加载（可选）：**
+```
+event: init
+data: [{"timestamp":"2024-01-01T12:00:00.000Z","value":75.5},...]\n\n
+```
+
+**自定义事件（可选）：**
+```
+event: data
+data: {"timestamp":"2024-01-01T12:00:00.000Z","value":75.5}\n\n
+```
+
+### SSE 服务器实现
+
+查看 [SSE_SERVER_EXAMPLE.md](./SSE_SERVER_EXAMPLE.md) 获取完整的服务器端实现示例（Node.js 和 Python）。
+
+项目包含一个可直接运行的示例服务器 `sse-server.js`：
+
+```bash
+node sse-server.js
+```
+
+## API 配置
+
+### 配置数据源 URL
+
+```tsx
+<AdvancedTimeSeriesChart
+  apiEndpoint="https://api.example.com/metrics"
+  mockData={false}
+/>
+```
+
+### 添加查询参数
+
+```tsx
+<AdvancedTimeSeriesChart
+  apiEndpoint="https://api.example.com/metrics"
+  queryParams={{
+    server: 'server-01',
+    metric: 'cpu',
+    interval: '5m'
+  }}
+  mockData={false}
+/>
+```
+
+实际请求的 URL：
+```
+https://api.example.com/metrics?range=1h&server=server-01&metric=cpu&interval=5m
+```
+
+### 自定义字段映射
+
+如果你的 API 返回的字段名不是标准的 `timestamp` 和 `value`：
+
+```tsx
+<AdvancedTimeSeriesChart
+  apiEndpoint="https://api.example.com/temperature"
+  valueField="temp"           // 使用 "temp" 字段作为数值
+  timestampField="recordTime" // 使用 "recordTime" 字段作为时间戳
+  mockData={false}
+/>
+```
+
+API 响应示例：
+```json
 {
   "data": [
-    {
-      "timestamp": "2026-03-12T10:00:00.000Z",
-      "value": 42.5
-    },
-    {
-      "timestamp": "2026-03-12T10:00:05.000Z",
-      "value": 43.2
-    }
+    { "recordTime": "2024-01-01T10:00:00Z", "temp": 25.5 },
+    { "recordTime": "2024-01-01T10:05:00Z", "temp": 26.2 }
   ]
 }
-\`\`\`
+```
+
+详细配置说明请查看 [API_CONFIG_GUIDE.md](./API_CONFIG_GUIDE.md)
+
+## API 数据格式
+
+### 标准格式（推荐）
+
+```json
+{
+  "data": [
+    { "timestamp": "2026-03-12T10:00:00Z", "value": 42.5 },
+    { "timestamp": "2026-03-12T10:00:05Z", "value": 43.2 }
+  ]
+}
+```
+
+### 简化格式
+
+```json
+[
+  { "timestamp": "2026-03-12T10:00:00Z", "value": 42.5 },
+  { "timestamp": "2026-03-12T10:00:05Z", "value": 43.2 }
+]
+```
+
+### 自定义字段格式
+
+```json
+{
+  "data": [
+    { "time": "2026-03-12T10:00:00Z", "metric": 42.5 },
+    { "time": "2026-03-12T10:00:05Z", "metric": 43.2 }
+  ]
+}
+```
+
+使用时配置字段映射：
+```tsx
+<AdvancedTimeSeriesChart
+  timestampField="time"
+  valueField="metric"
+/>
+```
 
 ### API 端点示例
 
-\`\`\`
-GET /api/timeseries?range=10m
-GET /api/timeseries?range=30m
-GET /api/timeseries?range=1h
-GET /api/timeseries?range=1d
-GET /api/timeseries?range=yesterday
-\`\`\`
+API 会自动接收 `range` 参数和你配置的 `queryParams`：
+
+```
+GET /api/metrics?range=10m&server=server-01&metric=cpu
+GET /api/metrics?range=30m&server=server-01&metric=cpu
+GET /api/metrics?range=1h&server=server-01&metric=cpu
+GET /api/metrics?range=1d&server=server-01&metric=cpu
+GET /api/metrics?range=yesterday&server=server-01&metric=cpu
+```
+
+更多使用示例请查看 [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md)
 
 ## 技术栈
 

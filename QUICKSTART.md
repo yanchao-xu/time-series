@@ -92,7 +92,7 @@ src/
 
 你的 API 应该返回以下格式：
 
-\`\`\`json
+```json
 {
   "data": [
     {
@@ -101,51 +101,97 @@ src/
     }
   ]
 }
-\`\`\`
+```
 
 #### 步骤 2：配置组件
 
-\`\`\`tsx
+```tsx
 <AdvancedTimeSeriesChart 
   mockData={false}
   apiEndpoint="https://your-api.com/metrics"
 />
-\`\`\`
+```
+
+#### 步骤 3：添加查询参数（可选）
+
+```tsx
+<AdvancedTimeSeriesChart 
+  mockData={false}
+  apiEndpoint="https://your-api.com/metrics"
+  queryParams={{
+    server: 'server-01',
+    metric: 'cpu'
+  }}
+/>
+```
+
+实际请求：`https://your-api.com/metrics?range=1h&server=server-01&metric=cpu`
+
+#### 步骤 4：自定义字段映射（可选）
+
+如果你的 API 字段名不是 `timestamp` 和 `value`：
+
+```tsx
+<AdvancedTimeSeriesChart 
+  mockData={false}
+  apiEndpoint="https://your-api.com/temperature"
+  valueField="temp"
+  timestampField="recordTime"
+/>
+```
+
+API 响应示例：
+```json
+{
+  "data": [
+    { "recordTime": "2024-01-01T10:00:00Z", "temp": 25.5 }
+  ]
+}
+```
 
 ### 7. 常用场景
 
 #### 场景 1：服务器监控
 
-\`\`\`tsx
+```tsx
 <AdvancedTimeSeriesChart 
   title="CPU 使用率 (%)"
   defaultRange="1h"
   mockData={false}
   apiEndpoint="/api/cpu"
+  queryParams={{ server: 'prod-01' }}
 />
-\`\`\`
+```
 
-#### 场景 2：股票价格
+#### 场景 2：数据库性能
 
-\`\`\`tsx
+```tsx
 <AdvancedTimeSeriesChart 
-  title="股票价格 (USD)"
+  title="查询响应时间"
   defaultRange="1d"
   mockData={false}
-  apiEndpoint="/api/stock/AAPL"
+  apiEndpoint="/api/db/metrics"
+  queryParams={{ 
+    database: 'production',
+    metric: 'query_time' 
+  }}
+  valueField="avgTime"
 />
-\`\`\`
+```
 
-#### 场景 3：网站流量
+#### 场景 3：IoT 传感器
 
-\`\`\`tsx
+```tsx
 <AdvancedTimeSeriesChart 
-  title="访问量 (PV)"
-  defaultRange="1d"
+  title="温度传感器"
+  defaultRange="30m"
   mockData={false}
-  apiEndpoint="/api/analytics/pageviews"
+  apiEndpoint="/api/sensors/data"
+  queryParams={{ sensor_id: 'temp-001' }}
+  valueField="temperature"
+  timestampField="recorded_at"
 />
-\`\`\`
+```
 
 ### 8. 性能优化建议
 
@@ -196,7 +242,8 @@ const MemoizedChart = React.memo(AdvancedTimeSeriesChart);
 
 - 查看 [README.md](./README.md) 了解完整功能
 - 查看 [USAGE_EXAMPLES.md](./USAGE_EXAMPLES.md) 学习高级用法
-- 修改 \`src/App.tsx\` 开始自定义你的图表
+- 查看 [API_CONFIG_GUIDE.md](./API_CONFIG_GUIDE.md) 了解详细的 API 配置
+- 修改 `src/App.tsx` 开始自定义你的图表
 
 ## 🎉 开始构建吧！
 
